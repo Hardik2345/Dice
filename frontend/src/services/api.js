@@ -8,6 +8,8 @@ const api = axios.create({
   }
 });
 
+console.log('API baseURL:', process.env.NEXT_PUBLIC_API_URL);
+
 export default {
   sendOTP: (data) => api.post('/api/send-otp', data),
   verifyOTP: (otp) => api.post('/api/verify-otp', { otp }),
