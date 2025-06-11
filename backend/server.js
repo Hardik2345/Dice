@@ -10,10 +10,13 @@ const User = require('./models/User');
 const app = express();
 
 // Middleware
-app.use(cors({
-  origin: 'http://localhost:3000',
-  credentials: true
-}));
+app.use(
+  cors({
+    origin: ['http://localhost:3000', 'https://dice-gamma-mocha.vercel.app'],
+    credentials: true,
+  })
+);
+
 app.use(express.json());
 app.use(session({
   secret: process.env.SESSION_SECRET || 'dice-roll-secret',
