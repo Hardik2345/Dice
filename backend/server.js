@@ -30,7 +30,7 @@ app.use(session({
     secure: true,
     httpOnly: true,
     maxAge: 1000 * 60 * 30,
-    sameSite: 'lax' // Add this
+    sameSite: 'none' // Add this
   },
   name: 'dice-roll-session' // Add this to avoid conflicts
 }));
