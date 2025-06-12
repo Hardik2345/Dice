@@ -11,7 +11,7 @@ const app = express();
 
 // Middleware
 app.use(cors({
-  origin: (origin, callback) => callback(null, origin),
+  origin: process.env.REACT_APP_API_URL || 'https://dice-gold.vercel.app/', // Fallback for local dev
   credentials: true,
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type','Authorization']
@@ -105,6 +105,7 @@ app.post('/api/verify-otp', (req, res) => {
   
   try {
     const { otp } = req.body;
+    console.log('Received OTP:', req);
 
     if (!req.session.userInfo) {
       console.log('ERROR: No user info in session!');
