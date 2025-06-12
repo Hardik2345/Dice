@@ -3,21 +3,24 @@ const cors = require('cors');
 const mongoose = require('mongoose');
 const bcrypt = require('bcrypt');
 const session = require('express-session');
+const axios = require('axios');
 require('dotenv').config();
 
 const User = require('./models/User');
+const ShopifyService = require('./shopifyService');
 
 const app = express();
+const shopifyService = new ShopifyService();
 
 app.set('trust proxy', 1); // Trust first proxy (needed for secure cookies)
+
 // Middleware
 app.use(cors({
-  origin: process.env.REACT_APP_API_URL || 'https://dice-gold.vercel.app', // Fallback for local dev
+  origin: process.env.REACT_APP_API_URL || 'https://dice-gold.vercel.app',
   credentials: true,
   methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type','Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
-
 
 app.use(express.json());
 app.use(session({
@@ -33,7 +36,6 @@ app.use(session({
   name: 'dice-roll-session'
 }));
 
-
 // MongoDB connection
 mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/dice-roll-app')
   .then(() => console.log('Connected to MongoDB'))
@@ -42,7 +44,7 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/dice-roll
 // Hardcoded OTP for development
 const HARDCODED_OTP = '123456';
 
-// Discount code mappings
+// Discount code mappings (fallback for when Shopify is unavailable)
 const DISCOUNT_CODES = {
   1: { code: 'DICE10', discount: '10%' },
   2: { code: 'DICE15', discount: '15%' },
@@ -102,12 +104,10 @@ app.post('/api/send-otp', async (req, res) => {
 app.post('/api/verify-otp', (req, res) => {
   console.log('Verify OTP called with:', req.body);
   console.log('Session ID:', req.sessionID);
-  console.log('Full session data:', req.session);
   console.log('User info in session:', req.session.userInfo);
   
   try {
     const { otp } = req.body;
-    console.log('Received OTP:', req);
 
     if (!req.session.userInfo) {
       console.log('ERROR: No user info in session!');
@@ -133,7 +133,7 @@ app.post('/api/verify-otp', (req, res) => {
   }
 });
 
-// Roll dice endpoint
+// Roll dice endpoint - Updated with Shopify integration
 app.post('/api/roll-dice', async (req, res) => {
   try {
     if (!req.session.verified || !req.session.userInfo) {
@@ -156,21 +156,41 @@ app.post('/api/roll-dice', async (req, res) => {
 
     // Generate dice result (1-6)
     const diceResult = Math.floor(Math.random() * 6) + 1;
-    const discountInfo = DISCOUNT_CODES[diceResult];
 
-    // In production, you would create unique codes via Shopify API
-    // For now, using pre-defined codes
-    const discountCode = `${discountInfo.code}_${Date.now()}`;
+    // Create discount in Shopify
+    let shopifyDiscount;
+    let useShopify = true;
+    
+    try {
+      shopifyDiscount = await shopifyService.createDiceRollDiscount(diceResult, name, mobile);
+      console.log('Shopify discount created successfully:', shopifyDiscount.code);
+    } catch (shopifyError) {
+      console.error('Shopify integration error:', shopifyError);
+      useShopify = false;
+      
+      // Fallback to local discount code if Shopify fails
+      const discountInfo = DISCOUNT_CODES[diceResult];
+      shopifyDiscount = {
+        code: `${discountInfo.code}_${Date.now()}`,
+        percentage: parseInt(discountInfo.discount),
+        priceRuleId: null,
+        discountCodeId: null,
+        shopifyUrl: null
+      };
+    }
 
     // Hash mobile number for storage
     const mobileHash = await hashMobile(mobile);
 
-    // Save user record
+    // Save user record with Shopify details
     const newUser = new User({
       mobileHash,
       name,
-      discountCode,
-      diceResult
+      discountCode: shopifyDiscount.code,
+      diceResult,
+      shopifyPriceRuleId: shopifyDiscount.priceRuleId,
+      shopifyDiscountCodeId: shopifyDiscount.discountCodeId,
+      isShopifyCode: useShopify
     });
 
     await newUser.save();
@@ -181,13 +201,51 @@ app.post('/api/roll-dice', async (req, res) => {
     res.json({
       success: true,
       diceResult,
-      discountCode,
-      discount: discountInfo.discount,
-      message: `Congratulations! You won ${discountInfo.discount} off!`
+      discountCode: shopifyDiscount.code,
+      discount: `${shopifyDiscount.percentage}%`,
+      shopifyUrl: shopifyDiscount.shopifyUrl,
+      isShopifyCode: useShopify,
+      message: `Congratulations! You won ${shopifyDiscount.percentage}% off!`
     });
   } catch (error) {
     console.error('Roll dice error:', error);
     res.status(500).json({ error: 'Failed to process dice roll' });
+  }
+});
+
+// Check discount status
+app.get('/api/discount-status/:code', async (req, res) => {
+  try {
+    const { code } = req.params;
+    
+    // First check if this is a Shopify code in our database
+    const user = await User.findOne({ discountCode: code });
+    
+    if (!user || !user.isShopifyCode) {
+      return res.json({
+        code,
+        valid: true,
+        isShopifyCode: false,
+        message: 'This is a local discount code'
+      });
+    }
+
+    // Check with Shopify
+    const discount = await shopifyService.checkDiscountCode(code);
+    
+    if (!discount) {
+      return res.status(404).json({ error: 'Discount code not found in Shopify' });
+    }
+
+    res.json({
+      code: discount.code,
+      usageCount: discount.usage_count,
+      valid: discount.usage_count === 0,
+      isShopifyCode: true
+    });
+  } catch (error) {
+    console.error('Check discount error:', error);
+    res.status(500).json({ error: 'Failed to check discount status' });
   }
 });
 
@@ -199,8 +257,126 @@ app.get('/api/status', (req, res) => {
   });
 });
 
+// Admin endpoint to get usage statistics
+app.get('/api/admin/stats', async (req, res) => {
+  try {
+    // TODO: Add proper authentication here for admin access
+    
+    const totalUsers = await User.countDocuments();
+    const shopifyUsers = await User.countDocuments({ isShopifyCode: true });
+    const localUsers = await User.countDocuments({ isShopifyCode: false });
+    
+    const diceStats = await User.aggregate([
+      {
+        $group: {
+          _id: '$diceResult',
+          count: { $sum: 1 },
+          shopifyCount: {
+            $sum: { $cond: [{ $eq: ['$isShopifyCode', true] }, 1, 0] }
+          }
+        }
+      },
+      { $sort: { _id: 1 } }
+    ]);
+
+    const recentPlayers = await User.find()
+      .sort({ playedAt: -1 })
+      .limit(10)
+      .select('name diceResult discountCode playedAt isShopifyCode');
+
+    res.json({
+      totalPlayers: totalUsers,
+      shopifyDiscounts: shopifyUsers,
+      localDiscounts: localUsers,
+      diceDistribution: diceStats,
+      recentPlayers
+    });
+  } catch (error) {
+    console.error('Stats error:', error);
+    res.status(500).json({ error: 'Failed to get statistics' });
+  }
+});
+
+// Cleanup old/unused discounts (run as a scheduled job)
+app.post('/api/admin/cleanup-discounts', async (req, res) => {
+  try {
+    // TODO: Add proper authentication here for admin access
+    
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    const oldUsers = await User.find({
+      playedAt: { $lt: thirtyDaysAgo },
+      shopifyPriceRuleId: { $ne: null }
+    });
+
+    let deletedCount = 0;
+    let errors = [];
+    
+    for (const user of oldUsers) {
+      try {
+        const deleted = await shopifyService.deleteDiscount(user.shopifyPriceRuleId);
+        if (deleted) {
+          deletedCount++;
+          user.shopifyPriceRuleId = null;
+          user.shopifyDiscountCodeId = null;
+          await user.save();
+        }
+      } catch (error) {
+        errors.push({ userId: user._id, error: error.message });
+      }
+    }
+
+    res.json({
+      message: `Cleaned up ${deletedCount} old discounts`,
+      totalProcessed: oldUsers.length,
+      errors: errors.length > 0 ? errors : undefined
+    });
+  } catch (error) {
+    console.error('Cleanup error:', error);
+    res.status(500).json({ error: 'Failed to cleanup discounts' });
+  }
+});
+
+// Health check endpoint
+app.get('/api/health', async (req, res) => {
+  try {
+    // Check MongoDB connection
+    const mongoStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
+    
+    // Check Shopify connection
+    let shopifyStatus = 'unknown';
+    try {
+      await shopifyService.makeRequest('/shop.json', 'GET');
+      shopifyStatus = 'connected';
+    } catch {
+      shopifyStatus = 'disconnected';
+    }
+
+    res.json({
+      status: 'ok',
+      mongodb: mongoStatus,
+      shopify: shopifyStatus,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: 'error',
+      error: error.message
+    });
+  }
+});
+
 // Start server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
+  
+  // Check if Shopify credentials are configured
+  if (!process.env.SHOPIFY_STORE_URL || !process.env.SHOPIFY_ACCESS_TOKEN) {
+    console.warn('⚠️  WARNING: Shopify credentials not found in .env file');
+    console.warn('⚠️  The app will work but will use local discount codes only');
+  } else {
+    console.log('✅ Shopify integration configured');
+  }
 });
