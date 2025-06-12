@@ -10,15 +10,12 @@ const User = require('./models/User');
 const app = express();
 
 // Middleware
-
-app.use(
-  cors({
-    origin: (origin, callback) => {
-      callback(null, origin); // Reflect the origin back
-    },
-    credentials: true
-  })
-);
+app.use(cors({
+  origin: (origin, callback) => callback(null, origin),
+  credentials: true,
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type','Authorization']
+}));
 
 
 app.use(express.json());
