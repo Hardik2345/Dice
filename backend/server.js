@@ -9,6 +9,7 @@ const User = require('./models/User');
 
 const app = express();
 
+app.set('trust proxy', 1); // Trust first proxy (needed for secure cookies)
 // Middleware
 app.use(cors({
   origin: process.env.REACT_APP_API_URL || 'https://dice-gold.vercel.app', // Fallback for local dev
@@ -21,16 +22,17 @@ app.use(cors({
 app.use(express.json());
 app.use(session({
   secret: process.env.SESSION_SECRET || 'dice-roll-secret',
-  resave: true, // Change to true
-  saveUninitialized: true, // Make sure this is true
+  resave: false,
+  saveUninitialized: false,
   cookie: {
-    secure: true,
+    secure: true,           // required for cookies to be sent over HTTPS
     httpOnly: true,
-    maxAge: 1000 * 60 * 30,
-    sameSite: 'none' // Add this
+    sameSite: 'none',       // required for cross-site cookies
+    maxAge: 1000 * 60 * 30  // 30 minutes
   },
-  name: 'dice-roll-session' // Add this to avoid conflicts
+  name: 'dice-roll-session'
 }));
+
 
 // MongoDB connection
 mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/dice-roll-app')
