@@ -11,7 +11,7 @@ const app = express();
 
 // Middleware
 app.use(cors({
-  origin: process.env.REACT_APP_API_URL || 'https://dice-gold.vercel.app/', // Fallback for local dev
+  origin: process.env.REACT_APP_API_URL || 'https://dice-gold.vercel.app', // Fallback for local dev
   credentials: true,
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type','Authorization']
