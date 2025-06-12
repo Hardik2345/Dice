@@ -14,6 +14,16 @@ function RewardScreen({ reward, onReset }) {
     return faces[value - 1];
   };
 
+  const handleShopNow = () => {
+    // If we have a Shopify URL, use it to auto-apply the discount
+    if (reward.shopifyUrl) {
+      window.open(reward.shopifyUrl, '_blank');
+    } else {
+      // Fallback to your store URL
+      window.open('https://your-store.myshopify.com', '_blank');
+    }
+  };
+
   return (
     <div className="reward-screen">
       <div className="celebration">🎉</div>
@@ -47,12 +57,25 @@ function RewardScreen({ reward, onReset }) {
       
       {copied && <div className="success-message">Code copied!</div>}
       
+      {/* Show Shopify integration status */}
+      {reward.isShopifyCode && (
+        <div className="shopify-badge">
+          ✅ Discount automatically created in Shopify
+        </div>
+      )}
+      
       <button 
         className="btn btn-primary shop-now"
-        onClick={() => window.location.href = 'https://your-store.myshopify.com'}
+        onClick={handleShopNow}
       >
-        Shop Now
+        {reward.shopifyUrl ? 'Apply Discount & Shop' : 'Shop Now'}
       </button>
+      
+      {reward.shopifyUrl && (
+        <p className="auto-apply-text">
+          Click above to automatically apply your discount!
+        </p>
+      )}
       
       <button 
         className="btn btn-secondary"
