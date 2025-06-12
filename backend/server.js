@@ -27,7 +27,7 @@ app.use(session({
   resave: true, // Change to true
   saveUninitialized: true, // Make sure this is true
   cookie: {
-    secure: false,
+    secure: true,
     httpOnly: true,
     maxAge: 1000 * 60 * 30,
     sameSite: 'lax' // Add this
