@@ -14,13 +14,32 @@ const shopifyService = new ShopifyService();
 
 app.set('trust proxy', 1); // Trust first proxy (needed for secure cookies)
 
-// Middleware
+const allowedOrigins = [
+  'https://your-production-site.vercel.app',
+  'https://your-custom-domain.com',
+  /^https:\/\/.*\.vercel\.app$/
+];
+
 app.use(cors({
-  origin: 'https://dice-n4ne25ygo-hardiks-projects-4c8d6fa8.vercel.app',
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like curl or mobile apps)
+    if (!origin) return callback(null, true);
+
+    const isAllowed = allowedOrigins.some(o =>
+      typeof o === 'string' ? o === origin : o.test(origin)
+    );
+
+    if (isAllowed) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
+
 
 app.use(express.json());
 app.use(session({
