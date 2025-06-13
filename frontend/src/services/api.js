@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 // Use REACT_APP_ prefix for Create React App environment variables
-const API_URL = process.env.RENDER_APP_API_URL || 'http://localhost:5001';
+const API_URL = 'https://dice-1-ttat.onrender.com';
 
 const api = axios.create({
   baseURL: API_URL,
