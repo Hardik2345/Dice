@@ -16,7 +16,7 @@ app.set('trust proxy', 1); // Trust first proxy (needed for secure cookies)
 
 // Middleware
 app.use(cors({
-  origin: 'https://dice-ebbj05hud-hardiks-projects-4c8d6fa8.vercel.app',
+  origin: 'https://dice-n4ne25ygo-hardiks-projects-4c8d6fa8.vercel.app',
   credentials: true,
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
